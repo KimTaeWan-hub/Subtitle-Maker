@@ -8,14 +8,11 @@ import uuid
 import whisper
 from pathlib import Path
 import json
-from dotenv import load_dotenv
 import asyncio
 import logging
 
 from subtitle_utils import create_srt, create_vtt, create_txt
 from audio_preprocess import AudioPreprocessPipeline
-
-load_dotenv()
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -23,12 +20,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Subtitle Maker API")
 
-HOST_URL=os.getenv("BACKEND_URL")
-
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[HOST_URL],  # React 개발 서버
+    allow_origins=["http://localhost:3000"],  # React 개발 서버
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -185,7 +180,7 @@ async def preprocess_audio_task(file_id: str, video_path: Path):
                 output_dir=str(output_dir),
                 extract_vocals_only=True,
                 detect_voice_segments=True,
-                keep_intermediate_files=False
+                keep_intermediate_files=True  # 시각화를 위해 중간 파일 유지
             )
         
         # asyncio에서 동기 함수 실행
@@ -493,6 +488,38 @@ async def verify_preprocessing(file_id: str):
     except Exception as e:
         logger.error(f"검증 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f"검증 중 오류 발생: {str(e)}")
+
+
+@app.get("/api/waveform/{file_id}")
+async def get_waveform_visualization(file_id: str):
+    """전처리 단계별 파형 시각화 이미지 반환"""
+    try:
+        # 전처리 디렉토리에서 시각화 이미지 찾기
+        preprocessed_dir = UPLOAD_DIR / f"{file_id}_preprocessed"
+        
+        # 가능한 파형 이미지 파일 찾기
+        waveform_path = None
+        for pattern in ["*_waveform.png", "waveform.png"]:
+            import glob
+            matches = glob.glob(str(preprocessed_dir / pattern))
+            if matches:
+                waveform_path = Path(matches[0])
+                break
+        
+        if not waveform_path or not waveform_path.exists():
+            raise HTTPException(status_code=404, detail="파형 시각화 이미지를 찾을 수 없습니다")
+        
+        return FileResponse(
+            path=str(waveform_path),
+            media_type="image/png",
+            filename=f"{file_id}_waveform.png"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"파형 이미지 반환 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"파형 이미지 반환 중 오류 발생: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ import os
 import logging
 from pathlib import Path
 from typing import Dict, Optional
+import numpy as np
+import soundfile as sf
+import matplotlib
+matplotlib.use('Agg')  # GUI 없이 이미지 생성
+import matplotlib.pyplot as plt
 
 from audio_extractor import AudioProcessor
 from audio_separator import AudioSeparator
@@ -58,6 +63,101 @@ class AudioPreprocessPipeline:
         logger.info("✓ VoiceActivityDetector 초기화 완료")
         
         logger.info("AudioPreprocessPipeline 초기화 완료")
+    
+    def visualize_preprocessing_stages(
+        self,
+        extracted_audio: str,
+        separated_audio: str,
+        final_audio: str,
+        output_path: str,
+        max_duration: float = 30.0
+    ):
+        """
+        전처리 각 단계별 오디오 파형을 시각화하여 하나의 이미지로 통합
+        
+        Args:
+            extracted_audio: 1단계 추출된 오디오 경로
+            separated_audio: 2단계 분리된 오디오 경로
+            final_audio: 3단계 최종 처리된 오디오 경로
+            output_path: 출력 이미지 경로
+            max_duration: 시각화할 최대 길이(초) - 너무 긴 파일 처리 방지
+        """
+        try:
+            logger.info("오디오 파형 시각화 시작")
+            
+            # 한글 폰트 설정 (시스템 기본 폰트 사용)
+            plt.rcParams['font.family'] = 'DejaVu Sans'
+            plt.rcParams['axes.unicode_minus'] = False
+            
+            # 각 단계별 오디오 로드
+            audio1, sr1 = sf.read(extracted_audio)
+            audio2, sr2 = sf.read(separated_audio)
+            audio3, sr3 = sf.read(final_audio)
+            
+            # 스테레오를 모노로 변환
+            if audio1.ndim > 1:
+                audio1 = np.mean(audio1, axis=1)
+            if audio2.ndim > 1:
+                audio2 = np.mean(audio2, axis=1)
+            if audio3.ndim > 1:
+                audio3 = np.mean(audio3, axis=1)
+            
+            # 최대 길이 제한 (처리 속도를 위해)
+            max_samples = int(max_duration * sr1)
+            if len(audio1) > max_samples:
+                audio1 = audio1[:max_samples]
+            if len(audio2) > max_samples:
+                audio2 = audio2[:max_samples]
+            if len(audio3) > max_samples:
+                audio3 = audio3[:max_samples]
+            
+            # 시간 축 생성
+            time1 = np.linspace(0, len(audio1) / sr1, len(audio1))
+            time2 = np.linspace(0, len(audio2) / sr2, len(audio2))
+            time3 = np.linspace(0, len(audio3) / sr3, len(audio3))
+            
+            # 그래프 생성 (3개의 서브플롯)
+            fig, axes = plt.subplots(3, 1, figsize=(14, 10))
+            fig.suptitle('Audio Preprocessing Stages - Waveform', fontsize=16, fontweight='bold')
+            
+            # 1단계: 추출된 오디오
+            axes[0].plot(time1, audio1, linewidth=0.5, color='#2E86AB')
+            axes[0].set_title('Stage 1: Extracted Audio from Video', fontsize=12, pad=10)
+            axes[0].set_ylabel('Amplitude', fontsize=10)
+            axes[0].set_xlim([0, max(time1[-1] if len(time1) > 0 else 0, time2[-1] if len(time2) > 0 else 0, time3[-1] if len(time3) > 0 else 0)])
+            axes[0].grid(True, alpha=0.3)
+            axes[0].set_ylim([-1, 1])
+            
+            # 2단계: 음원 분리된 오디오 (보컬)
+            axes[1].plot(time2, audio2, linewidth=0.5, color='#A23B72')
+            axes[1].set_title('Stage 2: Separated Audio (Vocals)', fontsize=12, pad=10)
+            axes[1].set_ylabel('Amplitude', fontsize=10)
+            axes[1].set_xlim([0, max(time1[-1] if len(time1) > 0 else 0, time2[-1] if len(time2) > 0 else 0, time3[-1] if len(time3) > 0 else 0)])
+            axes[1].grid(True, alpha=0.3)
+            axes[1].set_ylim([-1, 1])
+            
+            # 3단계: 최종 처리된 오디오 (음성 구간만)
+            axes[2].plot(time3, audio3, linewidth=0.5, color='#F18F01')
+            axes[2].set_title('Stage 3: Voice Activity Detection & Extraction', fontsize=12, pad=10)
+            axes[2].set_xlabel('Time (seconds)', fontsize=10)
+            axes[2].set_ylabel('Amplitude', fontsize=10)
+            axes[2].set_xlim([0, max(time1[-1] if len(time1) > 0 else 0, time2[-1] if len(time2) > 0 else 0, time3[-1] if len(time3) > 0 else 0)])
+            axes[2].grid(True, alpha=0.3)
+            axes[2].set_ylim([-1, 1])
+            
+            # 레이아웃 조정
+            plt.tight_layout()
+            
+            # 이미지 저장
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"✓ 파형 시각화 완료: {output_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"파형 시각화 실패: {str(e)}")
+            return False
     
     def process(
         self,
@@ -166,6 +266,17 @@ class AudioPreprocessPipeline:
                 # 음성 구간 탐지를 하지 않는 경우, 2단계 출력을 최종 결과로 사용
                 result['final_audio'] = stage2_output
                 logger.info("3단계 건너뜀 (음성 구간 탐지 비활성화)")
+            
+            # ===== 파형 시각화 =====
+            logger.info("\n파형 시각화 생성 중...")
+            visualization_path = os.path.join(output_dir, f"{base_name}_waveform.png")
+            self.visualize_preprocessing_stages(
+                extracted_audio=extracted_audio_path,
+                separated_audio=stage2_output,
+                final_audio=result['final_audio'],
+                output_path=visualization_path
+            )
+            result['visualization'] = visualization_path
             
             # ===== 중간 파일 정리 =====
             if not keep_intermediate_files:
@@ -287,6 +398,19 @@ class AudioPreprocessPipeline:
             else:
                 result['final_audio'] = stage2_output
                 logger.info("3단계 건너뜀 (음성 구간 탐지 비활성화)")
+            
+            # ===== 파형 시각화 =====
+            logger.info("\n파형 시각화 생성 중...")
+            visualization_path = os.path.join(output_dir, f"{base_name}_waveform.png")
+            
+            # 원본 오디오는 입력 파일이므로 시각화할 수 없음, stage2_output 사용
+            self.visualize_preprocessing_stages(
+                extracted_audio=audio_path,
+                separated_audio=stage2_output,
+                final_audio=result['final_audio'],
+                output_path=visualization_path
+            )
+            result['visualization'] = visualization_path
             
             # ===== 중간 파일 정리 =====
             if not keep_intermediate_files:
