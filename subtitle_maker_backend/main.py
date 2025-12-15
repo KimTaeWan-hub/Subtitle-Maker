@@ -13,7 +13,7 @@ import asyncio
 import logging
 
 from subtitle_utils import create_srt, create_vtt, create_txt
-from audio_processor import AudioProcessor
+from audio_preprocess import AudioPreprocessPipeline
 
 load_dotenv()
 
@@ -53,8 +53,12 @@ preprocessing_status: Dict[str, Dict] = {}
 # WebSocket 연결 관리
 active_connections: Dict[str, WebSocket] = {}
 
-# 오디오 프로세서 인스턴스
-audio_processor = AudioProcessor(target_sample_rate=16000)
+# 오디오 전처리 파이프라인 인스턴스
+audio_pipeline = AudioPreprocessPipeline(
+    sample_rate=16000,
+    separator_model="htdemucs",
+    vad_threshold=0.5
+)
 
 
 class SubtitleSegment(BaseModel):
@@ -162,18 +166,44 @@ async def preprocess_audio_task(file_id: str, video_path: Path):
             "message": "전처리 시작"
         }
         
-        # 진행상황 콜백 함수
-        async def progress_callback(progress: int, message: str):
-            await send_progress_update(file_id, progress, message)
+        # 오디오 추출 시작
+        await send_progress_update(file_id, 10, "1단계: 오디오 추출 중...")
         
-        # 오디오 전처리 실행
-        processed_audio_path = await audio_processor.process_video(
-            video_path=video_path,
-            output_dir=UPLOAD_DIR,
-            progress_callback=progress_callback
-        )
+        # 음원 분리 시작
+        await send_progress_update(file_id, 40, "2단계: 음원 분리 중...")
         
-        logger.info(f"전처리 완료: {file_id} -> {processed_audio_path}")
+        # 음성 구간 탐지 시작
+        await send_progress_update(file_id, 70, "3단계: 음성 구간 탐지 중...")
+        
+        # 출력 디렉토리 설정
+        output_dir = UPLOAD_DIR / f"{file_id}_preprocessed"
+        
+        # 오디오 전처리 파이프라인 실행 (동기 함수를 별도 스레드에서 실행)
+        def run_pipeline():
+            return audio_pipeline.process(
+                video_path=str(video_path),
+                output_dir=str(output_dir),
+                extract_vocals_only=True,
+                detect_voice_segments=True,
+                keep_intermediate_files=False
+            )
+        
+        # asyncio에서 동기 함수 실행
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, run_pipeline)
+        
+        # 최종 오디오 파일을 표준 위치로 복사/이동
+        final_audio = result.get('final_audio')
+        if final_audio:
+            import shutil
+            standard_path = UPLOAD_DIR / f"{file_id}_processed.wav"
+            shutil.copy(final_audio, standard_path)
+            logger.info(f"최종 오디오 복사: {final_audio} -> {standard_path}")
+        
+        # 완료 상태 전송
+        await send_progress_update(file_id, 100, "전처리 완료")
+        
+        logger.info(f"전처리 완료: {file_id} -> {final_audio}")
         
     except Exception as e:
         logger.error(f"전처리 실패 [{file_id}]: {str(e)}")
@@ -249,11 +279,11 @@ async def transcribe_video(file_id: str):
                 detail="전처리에 실패했습니다. 파일을 다시 업로드해주세요."
             )
         
-        # 전처리된 오디오 파일 찾기
-        processed_audio_path = audio_processor.get_processed_audio_path(file_id, UPLOAD_DIR)
+        # 전처리된 오디오 파일 찾기 (표준 위치)
+        processed_audio_path = UPLOAD_DIR / f"{file_id}_processed.wav"
         
         # 전처리된 오디오가 없으면 원본 비디오 사용
-        if processed_audio_path and processed_audio_path.exists():
+        if processed_audio_path.exists():
             file_path = processed_audio_path
             logger.info(f"전처리된 오디오 사용: {file_path}")
         else:
