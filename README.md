@@ -17,7 +17,7 @@
 
 - **Backend**: Python, FastAPI, OpenAI Whisper (STT), FFmpeg
 - **Frontend**: React, WebSocket
-- **오디오 처리**: ffmpeg-python, pydub, noisereduce, librosa
+- **오디오 처리**: ffmpeg-python, noisereduce, librosa
 - **주요 기능**: 비디오 업로드, 오디오 전처리, 자동 자막 생성, 자막 편집, 다운로드
 
 ## 📁 프로젝트 구조
