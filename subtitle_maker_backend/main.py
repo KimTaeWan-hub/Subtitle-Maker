@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
 import uuid
-import whisper
 from pathlib import Path
 import json
 import asyncio
@@ -13,6 +12,7 @@ import logging
 
 from subtitle_utils import create_srt, create_vtt, create_txt
 from audio_preprocess import AudioPreprocessPipeline
+from stt_models import get_global_model, set_global_model, STTModelFactory, ModelType
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -33,14 +33,9 @@ app.add_middleware(
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# STT 모델 로드 (처음 요청 시 로드)
-model = None
-
-def get_model():
-    global model
-    if model is None:
-        model = whisper.load_model("medium")  # base 모델 사용 (더 빠름) # tiny, base, small, medium, large
-    return model
+# STT 모델은 stt_models.py에서 관리
+# get_global_model()을 통해 전역 모델에 접근
+# 필요시 set_global_model()로 모델 변경 가능
 
 # 전처리 상태 관리 (메모리 기반)
 preprocessing_status: Dict[str, Dict] = {}
@@ -295,9 +290,26 @@ async def transcribe_video(file_id: str):
             
             logger.warning(f"전처리된 오디오 없음, 원본 비디오 사용: {file_path}")
         
-        # Whisper 모델로 STT 처리
+        # faster-whisper 모델 사용 (CTranslate2 기반)
+        faster_model = STTModelFactory.create_model(
+            model_type=ModelType.FASTER_WHISPER.value,
+            model_size="medium",
+            device="cpu",  # CPU 사용
+            compute_type="int8"  # CPU에서는 int8 사용 (float16은 GPU만 지원)
+        )
+        set_global_model(faster_model)
+
+        # # Whisper large 모델 사용
+        # large_model = STTModelFactory.create_model(
+        #     model_type=ModelType.WHISPER.value,
+        #     model_size="large",
+        #     device="cuda"
+        # )
+        # set_global_model(large_model)
+        
+        # STT 모델로 처리
         logger.info(f"STT 처리 시작: {file_id}")
-        model = get_model()
+        model = get_global_model()
         result = model.transcribe(str(file_path), word_timestamps=True)
         
         # 세그먼트 생성
