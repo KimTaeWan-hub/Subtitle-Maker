@@ -186,7 +186,7 @@ class VoiceActivityDetector:
         speech_timestamps: Optional[List[Dict[str, float]]] = None
     ) -> str:
         """
-        오디오에서 음성 구간만 추출하여 새로운 파일로 저장합니다 (무음 제거).
+        오디오에서 음성이 아닌 구간을 음소거 처리하여 저장합니다 (길이 유지).
         
         Args:
             audio_path: 입력 오디오 파일 경로
@@ -197,23 +197,34 @@ class VoiceActivityDetector:
             str: 생성된 오디오 파일 경로
         """
         try:
-            logger.info(f"음성만 추출 시작: {audio_path} -> {output_path}")
+            logger.info(f"음성 구간 음소거 처리 시작: {audio_path} -> {output_path}")
             
             # 음성 타임스탬프가 없으면 계산
             if speech_timestamps is None:
                 speech_timestamps = self.detect_voice_segments(audio_path)
             
             # 오디오 파일 읽기
-            from silero_vad import read_audio, collect_chunks, save_audio
+            from silero_vad import read_audio, save_audio
+            import numpy as np
             wav = read_audio(audio_path, sampling_rate=self.sample_rate)
             
-            # 음성 구간만 수집
-            speech_only = collect_chunks(
-                speech_timestamps,
-                wav,
-                seconds=True,
-                sampling_rate=self.sample_rate
-            )
+            # 원본 오디오 복사 (numpy array로 변환)
+            processed_wav = wav.clone()
+            
+            # 음성이 아닌 구간을 0으로 만들기 (음소거)
+            # 먼저 전체를 0으로 만들고, 음성 구간만 원본 값으로 채우기
+            processed_wav[:] = 0.0
+            
+            for segment in speech_timestamps:
+                start_sample = int(segment['start'] * self.sample_rate)
+                end_sample = int(segment['end'] * self.sample_rate)
+                
+                # 범위 체크
+                start_sample = max(0, start_sample)
+                end_sample = min(len(wav), end_sample)
+                
+                # 음성 구간은 원본 오디오 유지
+                processed_wav[start_sample:end_sample] = wav[start_sample:end_sample]
             
             # 출력 디렉토리가 없으면 생성
             output_dir = os.path.dirname(output_path)
@@ -221,21 +232,23 @@ class VoiceActivityDetector:
                 os.makedirs(output_dir)
             
             # 파일 저장
-            save_audio(output_path, speech_only, sampling_rate=self.sample_rate)
+            save_audio(output_path, processed_wav, sampling_rate=self.sample_rate)
             
-            # 압축률 계산
+            # 통계 계산
             original_duration = len(wav) / self.sample_rate
-            speech_duration = len(speech_only) / self.sample_rate
-            compression_ratio = 100 * (1 - speech_duration / original_duration) if original_duration > 0 else 0
+            speech_duration = sum(segment['end'] - segment['start'] for segment in speech_timestamps)
+            muted_duration = original_duration - speech_duration
+            muted_ratio = 100 * (muted_duration / original_duration) if original_duration > 0 else 0
             
-            logger.info(f"음성 추출 완료: {output_path}")
-            logger.info(f"원본: {original_duration:.1f}초, 음성만: {speech_duration:.1f}초")
-            logger.info(f"무음 제거율: {compression_ratio:.1f}%")
+            logger.info(f"음소거 처리 완료: {output_path}")
+            logger.info(f"전체 길이: {original_duration:.1f}초 (유지)")
+            logger.info(f"음성 구간: {speech_duration:.1f}초, 음소거 구간: {muted_duration:.1f}초")
+            logger.info(f"음소거 비율: {muted_ratio:.1f}%")
             
             return output_path
             
         except Exception as e:
-            logger.error(f"음성 추출 실패: {str(e)}")
+            logger.error(f"음소거 처리 실패: {str(e)}")
             raise
 
 

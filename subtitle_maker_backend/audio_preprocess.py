@@ -136,9 +136,9 @@ class AudioPreprocessPipeline:
             axes[1].grid(True, alpha=0.3)
             axes[1].set_ylim([-1, 1])
             
-            # 3단계: 최종 처리된 오디오 (음성 구간만)
+            # 3단계: 최종 처리된 오디오 (음성 외 구간 음소거)
             axes[2].plot(time3, audio3, linewidth=0.5, color='#F18F01')
-            axes[2].set_title('Stage 3: Voice Activity Detection & Extraction', fontsize=12, pad=10)
+            axes[2].set_title('Stage 3: Voice Activity Detection & Muting', fontsize=12, pad=10)
             axes[2].set_xlabel('Time (seconds)', fontsize=10)
             axes[2].set_ylabel('Amplitude', fontsize=10)
             axes[2].set_xlim([0, max(time1[-1] if len(time1) > 0 else 0, time2[-1] if len(time2) > 0 else 0, time3[-1] if len(time3) > 0 else 0)])
@@ -252,7 +252,7 @@ class AudioPreprocessPipeline:
                 )
                 result['statistics'] = statistics
                 
-                # 음성만 추출한 파일 생성
+                # 음성 외 구간 음소거 처리한 파일 생성
                 final_audio_path = os.path.join(output_dir, f"{base_name}_final.wav")
                 self.voice_detector.extract_speech_only_audio(
                     stage2_output,
