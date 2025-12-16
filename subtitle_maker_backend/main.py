@@ -295,7 +295,7 @@ async def transcribe_video(file_id: str):
             model_type=ModelType.FASTER_WHISPER.value,
             model_size="medium",
             device="cpu",  # CPU 사용
-            compute_type="int8"  # CPU에서는 int8 사용 (float16은 GPU만 지원)
+            compute_type="int8",  # CPU에서는 int8 사용 (float16은 GPU만 지원)
         )
         set_global_model(faster_model)
 
@@ -310,7 +310,13 @@ async def transcribe_video(file_id: str):
         # STT 모델로 처리
         logger.info(f"STT 처리 시작: {file_id}")
         model = get_global_model()
-        result = model.transcribe(str(file_path), word_timestamps=True)
+        result = model.transcribe(
+            str(file_path), 
+            word_timestamps=True, 
+            vad_filter=True, 
+            vad_parameters=dict(min_silence_duration_ms=500),
+            language="ko"
+            )
         
         # 세그먼트 생성
         segments = []
