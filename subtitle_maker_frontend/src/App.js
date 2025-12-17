@@ -11,6 +11,7 @@ function App() {
   const [videoUrl, setVideoUrl] = useState(null);
   const [segments, setSegments] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const videoPlayerRef = useRef(null);
   
   // 전처리 상태 관리
   const [preprocessingStatus, setPreprocessingStatus] = useState({
@@ -85,6 +86,12 @@ function App() {
     setSegments(updatedSegments);
   };
 
+  const handleSegmentClick = (time) => {
+    if (videoPlayerRef.current) {
+      videoPlayerRef.current.seek(time);
+    }
+  };
+
   const handleTranscribe = async () => {
     if (!fileId) {
       alert('먼저 비디오를 업로드해주세요.');
@@ -133,7 +140,7 @@ function App() {
                 <VideoUploader onUploadSuccess={handleUploadSuccess} />
               ) : (
                 <>
-                  <VideoPlayer videoUrl={videoUrl} segments={segments} />
+                  <VideoPlayer ref={videoPlayerRef} videoUrl={videoUrl} segments={segments} />
                   
                   {/* 전처리 진행상황 표시 */}
                   {fileId && (
@@ -207,6 +214,7 @@ function App() {
                   onUpdate={handleSubtitleUpdate}
                   onRegenerate={handleTranscribe}
                   isProcessing={isProcessing}
+                  onSegmentClick={handleSegmentClick}
                 />
               )}
             </div>
