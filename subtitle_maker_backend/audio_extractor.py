@@ -53,7 +53,12 @@ class AudioProcessor:
             # - acodec='pcm_s16le': 16비트 PCM 오디오 코덱
             # - ac=1: 모노 채널 (Whisper는 모노 오디오를 권장)
             # - ar=sample_rate: 샘플레이트 설정
+            # - filter: loudnorm (EBU R128 표준 기반 볼륨 정규화) # Gemini가 추가
             stream = ffmpeg.input(video_path)
+            
+            # 오디오 필터 체인 구성: 볼륨 정규화 -> 포맷 변환 # Gemini가 추가
+            stream = ffmpeg.filter(stream, 'loudnorm', I=-16, TP=-1.5, LRA=11)
+            
             stream = ffmpeg.output(
                 stream,
                 output_path,
