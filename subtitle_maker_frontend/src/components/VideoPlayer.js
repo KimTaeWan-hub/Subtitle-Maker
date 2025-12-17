@@ -1,10 +1,18 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import './VideoPlayer.css';
 
-const VideoPlayer = ({ videoUrl, segments = [] }) => {
+const VideoPlayer = forwardRef(({ videoUrl, segments = [] }, ref) => {
   const videoRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [currentSubtitle, setCurrentSubtitle] = useState('');
+
+  useImperativeHandle(ref, () => ({
+    seek(time) {
+      if (videoRef.current) {
+        videoRef.current.currentTime = time;
+      }
+    }
+  }));
 
   useEffect(() => {
     const video = videoRef.current;
@@ -26,12 +34,6 @@ const VideoPlayer = ({ videoUrl, segments = [] }) => {
     setCurrentSubtitle(activeSubtitle ? activeSubtitle.text : '');
   }, [currentTime, segments]);
 
-  const handleSeek = (time) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-    }
-  };
-
   return (
     <div className="video-player-container">
       <video
@@ -50,7 +52,7 @@ const VideoPlayer = ({ videoUrl, segments = [] }) => {
       </div>
     </div>
   );
-};
+});
 
 const formatTime = (seconds) => {
   const hours = Math.floor(seconds / 3600);

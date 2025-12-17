@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './SubtitleEditor.css';
 
-const SubtitleEditor = ({ segments, fileId, onUpdate, onRegenerate, isProcessing }) => {
+const SubtitleEditor = ({ segments, fileId, onUpdate, onRegenerate, isProcessing, onSegmentClick }) => {
   const [editedSegments, setEditedSegments] = useState(segments);
   const [saving, setSaving] = useState(false);
   const textareaRefs = useRef({});
@@ -127,7 +127,11 @@ const SubtitleEditor = ({ segments, fileId, onUpdate, onRegenerate, isProcessing
 
       <div className="segments-list">
         {editedSegments.map((segment) => (
-          <div key={segment.id} className="segment-item">
+          <div 
+            key={segment.id} 
+            className="segment-item"
+            onClick={() => onSegmentClick && onSegmentClick(segment.start_time)}
+          >
             <div className="segment-header">
               <span className="segment-id">#{segment.id}</span>
               <div className="segment-times">
