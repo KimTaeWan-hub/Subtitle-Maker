@@ -18,3 +18,5 @@ uploads/
 *.json
 .DS_Store
 .env
+
+!requirements.txt
