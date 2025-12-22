@@ -19,4 +19,5 @@ uploads/
 .DS_Store
 .env
 
-!requirements.txt
+!requirements_faster_whisper.txt
+!requirements_whisperx.txt
